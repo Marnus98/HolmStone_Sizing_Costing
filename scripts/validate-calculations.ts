@@ -1,7 +1,9 @@
 /**
- * Golden-value validation: runs the calculation engine against the real
- * Mardale Apple Farm data and checks the results against the values Excel
- * itself produced in the source workbook (captured in the mapping doc).
+ * Golden-value validation: runs the calculation engine against real/reference
+ * data and checks the results against values Excel itself produced in the
+ * source workbooks (captured in the mapping doc, and in the new
+ * "Solar calc - claude.xlsx" reference file for the Grid-Tied and Off-Grid
+ * quick calcs).
  *
  * Run with:  node --experimental-strip-types scripts/validate-calculations.ts
  */
@@ -10,6 +12,7 @@ import { computeConsumptionSummary } from "../src/lib/calculations/consumption.t
 import { computeBatterySizing, DEFAULT_BATTERY_ASSUMPTIONS } from "../src/lib/calculations/batterySizing.ts";
 import { computeSolarSizing, defaultSolarAssumptions } from "../src/lib/calculations/solarSizing.ts";
 import { computeOffGridSizing, DEFAULT_OFFGRID_ASSUMPTIONS } from "../src/lib/calculations/offGridSizing.ts";
+import type { ConsumptionSummary } from "../src/lib/calculations/types.ts";
 
 let pass = 0;
 let fail = 0;
@@ -62,6 +65,7 @@ check("Recommended inverter/PCS (kW)", battWorst.recommendedInverterKw, 15);
 
 console.log("\n-- Solar Sizing: Hybrid (using annual-average battery recharge) --");
 const solar = computeSolarSizing(
+  "hybrid",
   summary.monthlyConsumption,
   mardaleBills,
   battAvg.dailyDischargeEnergyKwh,
@@ -75,9 +79,59 @@ check("Actual installed (kWp)", solar.actualInstalledKwp, 27.9, 0.001);
 check("Recommended PV (kWp)", solar.recommendedPvKwp, 30);
 check("Recommended grid/hybrid inverter (kW)", solar.recommendedGridInverterKw, 80);
 
-console.log("\n=== Scenario: Off-Grid system (new methodology - sanity check, no workbook baseline) ===\n");
-const offGrid = computeOffGridSizing(DEFAULT_OFFGRID_ASSUMPTIONS);
-console.log(`  Critical daily energy: ${offGrid.criticalDailyEnergyKwh.toFixed(1)} kWh`);
+// --- New reference file: "Solar calc - claude.xlsx" ---
+// Both the 'Solar Grid Tied Calc' and 'Off-Grid' sheets key off the same
+// Inputs!F15 average-monthly-total-consumption figure (8754 kWh/month, i.e.
+// 287.0163934426229 kWh/day x 30.5). Reproduced here as a synthetic 12-month
+// consumption summary so the golden checks below match the sheet exactly.
+const referenceConsumption: ConsumptionSummary = {
+  monthlyConsumption: Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1,
+    peakKwh: 0,
+    standardKwh: 0,
+    offPeakKwh: 0,
+    totalKwh: 8754,
+  })),
+  monthlyCost: [],
+  annualConsumptionKwh: 8754 * 12,
+  annualCostR: 0,
+  averageMonthlyConsumptionKwh: 8754,
+  averageMonthlyCostR: 0,
+  minMonthlyConsumptionKwh: 8754,
+  maxMonthlyConsumptionKwh: 8754,
+  consumptionMixPct: { peak: 0, standard: 0, offPeak: 0 },
+  costMixPct: { peak: 0, standard: 0, offPeak: 0 },
+  blendedTariffs: { standard: 0, offPeak: 0, peak: 0 },
+};
+
+console.log("\n=== Scenario: Grid-Tied / Solar PV-only quick calc ('Solar Grid Tied Calc' sheet) ===\n");
+const gridTied = computeSolarSizing(
+  "solar_pv_only",
+  referenceConsumption.monthlyConsumption,
+  [],
+  0,
+  1,
+  {
+    ...defaultSolarAssumptions("solar_pv_only"),
+    solarToConsumptionRatioPct: 0.5, // sheet B2
+    annualSpecificYieldKwhPerKwp: 1550, // sheet B5 (its own rough estimate, distinct from the kWhkWp table's 1565.36 average)
+  }
+);
+check("Average monthly consumption (kWh)", gridTied.averageMonthlyConsumptionKwh, 8754);
+check("Target monthly solar supply (kWh)", gridTied.targetMonthlySolarSupplyKwh, 4377);
+check("Annual solar production required (kWh)", gridTied.annualSolarProductionRequiredKwh, 52524);
+check("Required PV array (kWp)", gridTied.requiredPvArrayKwp, 33.8865, 0.001);
+
+console.log("\n=== Scenario: Off-Grid quick calc ('Off-Grid' sheet) ===\n");
+const offGridGolden = computeOffGridSizing(referenceConsumption, DEFAULT_OFFGRID_ASSUMPTIONS);
+check("Daily average total (kWh)", offGridGolden.dailyAverageTotalKwh, 287.0163934426229, 0.001);
+check("BESS Usable (kWh)", offGridGolden.usableBatteryEnergyKwh, 243.96393442622949, 0.001);
+check("BESS Installed (kWh)", offGridGolden.installedBatteryEnergyKwh, 292.75672131147536, 0.001);
+check("Required Solar (kWp)", offGridGolden.requiredPvArrayKwp, 98.66188524590163, 0.001);
+
+console.log("\n=== Scenario: Off-Grid system - real Mardale data sanity check ===\n");
+const offGrid = computeOffGridSizing(summary, DEFAULT_OFFGRID_ASSUMPTIONS);
+console.log(`  Daily average total: ${offGrid.dailyAverageTotalKwh.toFixed(1)} kWh`);
 console.log(`  Recommended battery capacity: ${offGrid.recommendedBatteryCapacityKwh} kWh`);
 console.log(`  Recommended battery inverter: ${offGrid.recommendedBatteryInverterKw} kW`);
 console.log(`  Recommended PV: ${offGrid.recommendedPvKwp} kWp (${offGrid.panelCount} panels)`);
@@ -91,8 +145,8 @@ if (offGrid.recommendedBatteryCapacityKwh > 0 && offGrid.recommendedPvKwp > 0) {
   console.log("  FAIL Off-grid engine produced a zero/invalid result");
 }
 
-console.log("\n-- Off-grid undersized-warning trigger check (deliberately undersized inputs) --");
-const undersized = computeOffGridSizing({
+console.log("\n-- Off-grid undersized-warning trigger check (no generator backup) --");
+const undersized = computeOffGridSizing(summary, {
   ...DEFAULT_OFFGRID_ASSUMPTIONS,
   generatorIncluded: false, // no generator backup is the classic "obviously undersized" off-grid config
 });

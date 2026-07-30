@@ -116,6 +116,7 @@ export interface BatterySizingResult {
 
 /** Solar Sizing module — assumptions (editable). */
 export interface SolarSizingAssumptions {
+  // --- Hybrid methodology (source: workbook 'Solar Sizing - Hybrid') ---
   peakSunHours: number; // hr/day
   panelDeratingFactor: number; // fraction 0-1
   inverterEfficiency: number; // fraction 0-1
@@ -127,6 +128,15 @@ export interface SolarSizingAssumptions {
   daytimeOffsetTargetPct: number; // fraction 0-1
   /** Specific yield: effective daily output per kWp installed. */
   specificYieldKwhPerKwpPerDay: number;
+
+  // --- Grid-Tied / Solar PV-only quick-calc methodology (source: 'Solar Grid
+  //     Tied Calc' sheet, "Solar calc - claude.xlsx") ---
+  /** Target fraction of TOTAL average monthly consumption solar should supply. */
+  solarToConsumptionRatioPct: number; // fraction 0-1
+  /** Annual specific yield, kWh/kWp/yr - also feeds the seasonal production chart (see solarYieldProfile.ts). */
+  annualSpecificYieldKwhPerKwp: number;
+
+  // --- Shared ---
   panelWattage: number; // Wp
   mountingType: MountingType;
   /** Rounding step for recommended PV array size, kWp. */
@@ -136,9 +146,20 @@ export interface SolarSizingAssumptions {
 }
 
 export interface SolarSizingResult {
+  /** Which methodology produced this result. */
+  method: "hybrid_daytime_offset" | "grid_tied_ratio";
+
+  // Hybrid-path intermediates (0 when method is grid_tied_ratio)
   dailyBatteryRechargeKwh: number;
   dailyStandardLoadToOffsetKwh: number;
   totalDailySolarEnergyRequiredKwh: number;
+
+  // Grid-tied-path intermediates (0 when method is hybrid_daytime_offset)
+  averageMonthlyConsumptionKwh: number;
+  targetMonthlySolarSupplyKwh: number;
+  annualSolarProductionRequiredKwh: number;
+
+  // Shared outputs
   requiredPvArrayKwp: number;
   panelCount: number;
   actualInstalledKwp: number;
@@ -147,19 +168,30 @@ export interface SolarSizingResult {
   recommendedGridInverterKw: number;
 }
 
-/** Off-Grid Sizing module — NEW methodology, not present in the source workbook. */
+/**
+ * Off-Grid Sizing module.
+ * Source: 'Off-Grid' sheet, "Solar calc - claude.xlsx" - a simple quick-calc
+ * methodology, superseding the earlier from-scratch HolmStone methodology.
+ * See offGridSizing.ts for full provenance notes.
+ */
 export interface OffGridSizingAssumptions {
-  criticalLoadKw: number; // must-run load during an outage / no-sun period
-  nonCriticalLoadKw: number; // deferrable / load-shed-first load
-  requiredAutonomyDays: number; // days of zero solar the battery alone must cover
-  minimumStateOfChargeReservePct: number; // fraction 0-1, reserve never discharged below
-  depthOfDischarge: number; // fraction 0-1
-  roundTripEfficiency: number; // fraction 0-1
-  designMarginFactor: number;
-  peakSunHoursWorstMonth: number; // worst-case (usually winter) PSH, hr/day
-  panelDeratingFactor: number;
-  specificYieldKwhPerKwpPerDayWorstMonth: number;
-  panelWattage: number;
+  // --- Quick-calc core (source: 'Off-Grid' sheet) ---
+  /** Usable battery energy as a fraction of one day's average total consumption. Sheet default 0.85 - unlabeled in the source; treat as a coverage/DoD-adjacent factor pending confirmation. */
+  batteryCoverageRatio: number; // fraction 0-1
+  /** Usable -> installed battery uprate. Sheet default 1.2 (implies ~83% effective usable fraction). */
+  batteryInstallMarginMultiplier: number;
+  /** Peak Sun Hours used in the quick PV kWp calc. Sheet default 4. */
+  solarPeakSunHours: number; // hr/day
+  /** Panel/system derating. Sheet default 0.8. */
+  solarDeratingFactor: number; // fraction 0-1
+  /** Safety margin applied to the PV kWp result. Sheet default 1.1. */
+  solarMarginMultiplier: number;
+
+  // --- App-level additions (not in the reference sheet) - equipment
+  //     selection & the brief's mandatory undersized-system warning ---
+  estimatedPeakLoadKw: number; // for battery inverter/PCS sizing
+  designMarginFactor: number; // margin applied to peak load for inverter sizing
+  panelWattage: number; // Wp
   generatorIncluded: boolean;
   generatorRatedKva: number; // 0 if none
   generatorPowerFactor: number; // typically 0.8
@@ -169,18 +201,24 @@ export interface OffGridSizingAssumptions {
 }
 
 export interface OffGridSizingResult {
-  criticalDailyEnergyKwh: number;
-  totalDailyEnergyKwh: number; // critical + non-critical (used for PV sizing)
-  usableBatteryEnergyRequiredKwh: number; // critical load x autonomy days
-  grossBatteryCapacityRequiredKwh: number; // usable, grossed up for DoD/efficiency/reserve
-  recommendedBatteryCapacityKwh: number;
+  dailyAverageTotalKwh: number; // average monthly total consumption / 30.5
+  usableBatteryEnergyKwh: number; // raw, before rounding
+  installedBatteryEnergyKwh: number; // raw, before rounding
+  recommendedBatteryCapacityKwh: number; // rounded
   recommendedBatteryInverterKw: number;
-  requiredPvArrayKwp: number;
-  recommendedPvKwp: number;
+  requiredPvArrayKwp: number; // raw, before rounding
+  recommendedPvKwp: number; // rounded
   panelCount: number;
   generatorRequiredKva: number; // 0 if not needed / not included
-  /** True if the sized system cannot meet the critical load through the required
-   *  autonomy period at the worst-case solar yield without a generator. */
+  /** Estimated production in the site's real worst calendar month, using the
+   *  non-linear seasonal yield profile (solarYieldProfile.ts) applied to the
+   *  recommended PV size - an additive reality check on top of the flat
+   *  quick-calc above, not a change to its core numbers. */
+  worstMonthProductionKwh: number;
+  /** That same month's actual metered consumption. */
+  worstMonthDemandKwh: number;
+  /** True if there is no generator backup, an undersized generator, or the
+   *  worst real month's demand exceeds estimated production at recommended PV size. */
   isUndersizedWarning: boolean;
   undersizedReason?: string;
 }

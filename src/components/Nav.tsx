@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useProject } from "@/lib/context/ProjectContext";
+import { useProjects } from "@/lib/projects/store";
 
 const BASE_LINKS = [
+  { href: "/projects", label: "Projects" },
   { href: "/", label: "Project Details" },
   { href: "/inputs", label: "Inputs" },
   { href: "/consumption", label: "Consumption Analysis" },
@@ -27,15 +29,32 @@ const SYSTEM_LINKS: Record<string, { href: string; label: string }[]> = {
 
 export function Nav() {
   const pathname = usePathname();
-  const { systemType, projectName, farmSiteName } = useProject();
+  const { systemType, farmSiteName } = useProject();
+  const { activeProject, activeVersion, switchVersion } = useProjects();
   const links = [...BASE_LINKS, ...SYSTEM_LINKS[systemType]];
 
   return (
     <nav className="flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-900 text-slate-200">
       <div className="border-b border-slate-700 px-5 py-5">
         <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">HolmStone</div>
-        <div className="mt-1 text-sm font-medium text-white">{projectName}</div>
+        <div className="mt-1 text-sm font-medium text-white">{activeProject?.name ?? "Loading..."}</div>
         <div className="text-xs text-slate-400">{farmSiteName}</div>
+        {activeProject && activeProject.versions.length > 0 && (
+          <select
+            value={activeVersion?.versionNumber ?? 1}
+            onChange={(e) => switchVersion(Number(e.target.value))}
+            className="mt-3 w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
+          >
+            {[...activeProject.versions]
+              .sort((a, b) => a.versionNumber - b.versionNumber)
+              .map((v) => (
+                <option key={v.versionNumber} value={v.versionNumber}>
+                  Version {v.versionNumber}
+                  {v.label ? ` - ${v.label}` : ""}
+                </option>
+              ))}
+          </select>
+        )}
       </div>
       <ul className="flex-1 space-y-0.5 px-2 py-4">
         {links.map((l) => {
@@ -57,7 +76,7 @@ export function Nav() {
       <div className="border-t border-slate-700 px-5 py-4 text-[11px] text-slate-500">
         Phase 1 - calculators only.
         <br />
-        No login / database yet.
+        Projects/versions saved in this browser (no login / server database yet).
       </div>
     </nav>
   );

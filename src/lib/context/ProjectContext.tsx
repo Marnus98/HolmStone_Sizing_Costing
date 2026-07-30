@@ -1,18 +1,21 @@
 "use client";
 
 /**
- * Phase 1 in-memory project state.
+ * Phase 1 project working-copy state.
  *
- * Deliberately NOT backed by a database yet (per the agreed Phase 1 scope:
- * "calculators first, infra after"). All state lives in React context for
- * the current browser session, seeded with the real Mardale Apple Farm data
- * so the calculators are immediately checkable against the source workbook.
- * Phase 2/3 will replace this with Postgres + Prisma-backed persistence,
- * multi-project support, and version history, without changing the
- * calculation engine itself.
+ * This is the "live editing surface" for whichever project + version is
+ * currently active (see @/lib/projects/store.tsx for the multi-project /
+ * version-history layer, and @/lib/projects/types.ts for ProjectData - the
+ * exact snapshot shape this context edits). Every state change here is
+ * pushed back (debounced) into that store, which persists it to
+ * localStorage as the Phase 1 stopgap ("calculators first, infra after").
+ * Switching project or version remounts this provider with a fresh initial
+ * snapshot via the `key` prop in ProjectProviderBridge below - Phase 2/3
+ * will replace the storage layer with Postgres-backed persistence without
+ * changing the calculation engine or this editing surface.
  */
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   SystemType,
   MonthlyBillEntry,
@@ -26,25 +29,15 @@ import {
   computeBatterySizing,
   computeSolarSizing,
   computeOffGridSizing,
-  DEFAULT_BATTERY_ASSUMPTIONS,
-  defaultSolarAssumptions,
-  DEFAULT_OFFGRID_ASSUMPTIONS,
 } from "@/lib/calculations";
+import type { ProjectData } from "@/lib/projects/types";
+import { useProjects, defaultProjectData } from "@/lib/projects/store";
 import { mardaleBills, mardaleTariff } from "@/lib/seed/mardaleAppleFarm";
+import { DEFAULT_BATTERY_ASSUMPTIONS, defaultSolarAssumptions, DEFAULT_OFFGRID_ASSUMPTIONS } from "@/lib/calculations";
 
-interface ProjectState {
-  projectName: string;
-  farmSiteName: string;
-  systemType: SystemType;
-  bills: MonthlyBillEntry[];
-  tariff: TariffStructure;
-  batteryAssumptions: BatterySizingAssumptions;
-  solarAssumptions: SolarSizingAssumptions;
-  offGridAssumptions: OffGridSizingAssumptions;
-}
+type ProjectState = ProjectData;
 
 interface ProjectContextValue extends ProjectState {
-  setProjectName: (v: string) => void;
   setFarmSiteName: (v: string) => void;
   setSystemType: (v: SystemType) => void;
   setBills: (v: MonthlyBillEntry[]) => void;
@@ -77,9 +70,8 @@ const EMPTY_BILL: MonthlyBillEntry = {
   adminCharge: 0, serviceCharge: 0,
 };
 
-function initialState(): ProjectState {
+function mardaleDemoData(): ProjectData {
   return {
-    projectName: "Mardale Apple Farm - Solar & Battery Project",
     farmSiteName: "Mardale Apple Farm",
     systemType: "hybrid",
     bills: mardaleBills,
@@ -90,10 +82,31 @@ function initialState(): ProjectState {
   };
 }
 
-export function ProjectProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<ProjectState>(initialState);
+function InnerProjectProvider({
+  initialData,
+  onChange,
+  children,
+}: {
+  initialData: ProjectData;
+  onChange: (data: ProjectData) => void;
+  children: ReactNode;
+}) {
+  const [state, setState] = useState<ProjectState>(initialData);
 
-  const setProjectName = (v: string) => setState((s) => ({ ...s, projectName: v }));
+  // Push edits up to the Projects store, debounced so fast typing doesn't
+  // hammer localStorage.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const t = setTimeout(() => onChangeRef.current(state), 400);
+    return () => clearTimeout(t);
+  }, [state]);
+
   const setFarmSiteName = (v: string) => setState((s) => ({ ...s, farmSiteName: v }));
 
   const setSystemType = (v: SystemType) =>
@@ -127,7 +140,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const setOffGridAssumptions = (patch: Partial<OffGridSizingAssumptions>) =>
     setState((s) => ({ ...s, offGridAssumptions: { ...s.offGridAssumptions, ...patch } }));
 
-  const resetToMardaleDemo = () => setState(initialState());
+  const resetToMardaleDemo = () => setState(mardaleDemoData());
 
   const consumption = useMemo(
     () => computeConsumptionSummary(state.bills, state.tariff),
@@ -163,23 +176,23 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const solar = useMemo(
     () =>
       computeSolarSizing(
+        state.systemType === "solar_pv_only" ? "solar_pv_only" : "hybrid",
         consumption.monthlyConsumption,
         state.bills,
         annualAverageBattery.dailyDischargeEnergyKwh,
         state.batteryAssumptions.roundTripEfficiency,
         state.solarAssumptions
       ),
-    [consumption, state.bills, annualAverageBattery, state.batteryAssumptions, state.solarAssumptions]
+    [consumption, state.bills, annualAverageBattery, state.batteryAssumptions, state.solarAssumptions, state.systemType]
   );
 
   const offGrid = useMemo(
-    () => computeOffGridSizing(state.offGridAssumptions),
-    [state.offGridAssumptions]
+    () => computeOffGridSizing(consumption, state.offGridAssumptions),
+    [consumption, state.offGridAssumptions]
   );
 
   const value: ProjectContextValue = {
     ...state,
-    setProjectName,
     setFarmSiteName,
     setSystemType,
     setBills,
@@ -201,8 +214,30 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }
 
+/** Bridges the active project+version from the Projects store into a live editing context. */
+export function ProjectProvider({ children }: { children: ReactNode }) {
+  const { activeProject, activeVersion, updateActiveVersionData } = useProjects();
+
+  if (!activeProject || !activeVersion) {
+    return <div className="p-8 text-sm text-slate-500">Loading project...</div>;
+  }
+
+  return (
+    <InnerProjectProvider
+      key={`${activeProject.id}:${activeVersion.versionNumber}`}
+      initialData={activeVersion.data}
+      onChange={updateActiveVersionData}
+    >
+      {children}
+    </InnerProjectProvider>
+  );
+}
+
 export function useProject(): ProjectContextValue {
   const ctx = useContext(ProjectContext);
   if (!ctx) throw new Error("useProject must be used within a ProjectProvider");
   return ctx;
 }
+
+// Re-exported for convenience where a fresh blank project's defaults are needed outside the store module.
+export { defaultProjectData };

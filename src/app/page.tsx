@@ -1,6 +1,7 @@
 "use client";
 
 import { useProject } from "@/lib/context/ProjectContext";
+import { useProjects } from "@/lib/projects/store";
 import { PageHeader, Card, TextField, SelectField, ResultTile } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
 import type { SystemType } from "@/lib/calculations/types";
@@ -18,19 +19,20 @@ const SYSTEM_TYPE_BLURB: Record<SystemType, string> = {
 };
 
 export default function ProjectDetailsPage() {
-  const { projectName, setProjectName, farmSiteName, setFarmSiteName, systemType, setSystemType, consumption, battery, solar, resetToMardaleDemo } = useProject();
+  const { farmSiteName, setFarmSiteName, systemType, setSystemType, consumption, battery, solar, resetToMardaleDemo } = useProject();
+  const { activeProject, activeVersion, renameActiveProject } = useProjects();
 
   return (
     <div>
       <PageHeader
         title="Project Details"
-        subtitle="Phase 1 demo - seeded with the real Mardale Apple Farm billing data from the source workbook."
+        subtitle={`Editing ${activeProject?.name ?? "..."} - Version ${activeVersion?.versionNumber ?? 1}. Use the Projects page to switch project, add a new version, or rename.`}
       />
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card title="Project">
           <div className="space-y-4">
-            <TextField label="Project name" value={projectName} onChange={setProjectName} />
+            <TextField label="Project name" value={activeProject?.name ?? ""} onChange={renameActiveProject} />
             <TextField label="Farm / site name" value={farmSiteName} onChange={setFarmSiteName} />
             <SelectField
               label="System type"
@@ -66,16 +68,18 @@ export default function ProjectDetailsPage() {
 
       <Card title="What's built in Phase 1" className="mt-6">
         <ul className="list-inside list-disc space-y-1 text-sm text-slate-600">
+          <li>Multi-project support with version history (see the Projects page) - saved in this browser</li>
           <li>Section 1 &amp; 2 input capture (municipal bill history + tariff structure)</li>
           <li>Section 3 &amp; 4 auto-calculated consumption and cost analysis, with graphs</li>
           <li>Battery Sizing (Worst-Month and Annual-Average scenarios)</li>
-          <li>Solar Sizing (Hybrid and Solar PV-only)</li>
-          <li>Off-Grid Sizing (new methodology, with undersized-system warning)</li>
-          <li>All calculations validated against the source workbook&apos;s own numbers (see docs/assumptions.md)</li>
+          <li>Solar Sizing - Hybrid (daytime-offset methodology) and Grid-Tied/Solar PV-only (ratio quick calc)</li>
+          <li>Off-Grid Sizing (quick-calc methodology, with a worst-month/generator undersized-system warning)</li>
+          <li>Non-linear seasonal solar production modelling, scaling proportionally with the annual yield assumption</li>
+          <li>All calculations validated against the source workbooks&apos; own numbers (see docs/assumptions.md)</li>
         </ul>
         <p className="mt-3 text-sm text-slate-500">
-          Not yet built (Phase 2/3 per the agreed plan): database persistence, login/roles, multi-project &amp; version
-          history, supplier cost import, itemised BOQ costing, LCOE/financials, PDF/Excel reports.
+          Not yet built (Phase 2/3 per the agreed plan): server-side database persistence, login/roles, supplier cost
+          import, itemised BOQ costing, LCOE/financials, PDF/Excel reports.
         </p>
       </Card>
     </div>
