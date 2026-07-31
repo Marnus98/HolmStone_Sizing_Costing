@@ -9,7 +9,7 @@ import {
   PieChart, Pie, Cell,
 } from "recharts";
 
-const COLORS = { peak: "#dc2626", standard: "#2563eb", offPeak: "#16a34a" };
+const COLORS = { peak: "#dc2626", standard: "#eab308", offPeak: "#16a34a" };
 
 export default function ConsumptionAnalysisPage() {
   const { consumption } = useProject();
@@ -73,13 +73,23 @@ export default function ConsumptionAnalysisPage() {
         <Card title="Annual consumption mix">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={90} label={(d) => `${d.name} ${formatPct(d.value, 0)}`}>
+              <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="45%"
+                  outerRadius={80}
+                  labelLine={false}
+                  label={({ value }) => formatPct(value, 0)}
+                >
                   {pieData.map((entry) => (
                     <Cell key={entry.name} fill={entry.fill} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(v: number) => formatPct(v, 1)} />
+                <Legend verticalAlign="bottom" height={32} />
               </PieChart>
             </ResponsiveContainer>
           </div>
