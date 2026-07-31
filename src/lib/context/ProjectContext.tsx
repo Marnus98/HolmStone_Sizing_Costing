@@ -50,11 +50,17 @@ interface ProjectContextValue extends ProjectState {
   setOffGridAssumptions: (patch: Partial<OffGridSizingAssumptions>) => void;
   resetToMardaleDemo: () => void;
 
-  // Derived / calculated (recomputed automatically whenever inputs change)
+  // Derived / calculated - ALL THREE system-type scenarios are always
+  // computed in the background regardless of the selected System Type, so
+  // the unified Sizing page (see /sizing) can show Solar PV, Hybrid and
+  // Off-Grid results stacked together at once, not gated behind a tab.
   consumption: ReturnType<typeof computeConsumptionSummary>;
   battery: ReturnType<typeof computeBatterySizing>;
   batteryAlt: ReturnType<typeof computeBatterySizing>; // the "other" scenario, for comparison
-  solar: ReturnType<typeof computeSolarSizing>;
+  /** Grid-Tied / Solar PV-only quick calc - always computed. */
+  solarGridTied: ReturnType<typeof computeSolarSizing>;
+  /** Hybrid daytime-offset methodology (Solar PV + Battery) - always computed. */
+  solarHybrid: ReturnType<typeof computeSolarSizing>;
   offGrid: ReturnType<typeof computeOffGridSizing>;
 }
 
@@ -109,17 +115,12 @@ function InnerProjectProvider({
 
   const setFarmSiteName = (v: string) => setState((s) => ({ ...s, farmSiteName: v }));
 
-  const setSystemType = (v: SystemType) =>
-    setState((s) => ({
-      ...s,
-      systemType: v,
-      // Keep the daytime-offset / battery-recharge defaults sensible when
-      // switching system type, without discarding anything the user edited.
-      solarAssumptions: {
-        ...s.solarAssumptions,
-        includeBatteryRecharge: v === "hybrid" || v === "off_grid",
-      },
-    }));
+  // System Type no longer gates which sizing calculations run - Solar PV,
+  // Hybrid and Off-Grid are all always computed (see solarGridTied/solarHybrid/
+  // offGrid below) and shown together on the unified Sizing page. It's kept
+  // as a simple "which system are we actually proposing" marker for the
+  // Project Details summary and future BOQ/costing phases.
+  const setSystemType = (v: SystemType) => setState((s) => ({ ...s, systemType: v }));
 
   const setBills = (v: MonthlyBillEntry[]) => setState((s) => ({ ...s, bills: v }));
   const updateBill = (index: number, patch: Partial<MonthlyBillEntry>) =>
@@ -173,17 +174,30 @@ function InnerProjectProvider({
     [consumption, state.batteryAssumptions]
   );
 
-  const solar = useMemo(
+  const solarGridTied = useMemo(
     () =>
       computeSolarSizing(
-        state.systemType === "solar_pv_only" ? "solar_pv_only" : "hybrid",
+        "solar_pv_only",
+        consumption.monthlyConsumption,
+        state.bills,
+        0,
+        state.batteryAssumptions.roundTripEfficiency,
+        state.solarAssumptions
+      ),
+    [consumption, state.bills, state.batteryAssumptions.roundTripEfficiency, state.solarAssumptions]
+  );
+
+  const solarHybrid = useMemo(
+    () =>
+      computeSolarSizing(
+        "hybrid",
         consumption.monthlyConsumption,
         state.bills,
         annualAverageBattery.dailyDischargeEnergyKwh,
         state.batteryAssumptions.roundTripEfficiency,
         state.solarAssumptions
       ),
-    [consumption, state.bills, annualAverageBattery, state.batteryAssumptions, state.solarAssumptions, state.systemType]
+    [consumption, state.bills, annualAverageBattery, state.batteryAssumptions, state.solarAssumptions]
   );
 
   const offGrid = useMemo(
@@ -207,7 +221,8 @@ function InnerProjectProvider({
     consumption,
     battery,
     batteryAlt,
-    solar,
+    solarGridTied,
+    solarHybrid,
     offGrid,
   };
 

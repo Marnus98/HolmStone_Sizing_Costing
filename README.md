@@ -21,20 +21,28 @@ deferred" below.
   with computed per-row and annual totals), and Section 2 (tariff structure).
 - **Consumption Analysis** (`/consumption`) - Section 3 & 4, auto-calculated
   monthly/annual consumption and cost, with bar and pie charts (Recharts).
-- **Battery Sizing** (`/battery`) - Worst-Month and Annual-Average scenarios,
-  hidden for Solar PV-only projects.
-- **Solar Sizing** (`/solar`) - Hybrid (workbook daytime-offset methodology)
-  and Grid-Tied/Solar PV-only (ratio-based quick calc from the "Solar calc -
-  claude.xlsx" reference file) - each system type uses its own methodology.
-- **Off-Grid Sizing** (`/offgrid`) - quick-calc methodology from the same
-  reference file, with generator sizing and an undersized-system warning
-  layered on top.
+- **System Sizing** (`/sizing`) - a single page showing all three system
+  types stacked underneath each other, always computed in the background
+  regardless of which System Type is selected - no tabs to switch between:
+  - *Solar PV (Grid-Tied)* - ratio-based quick calc from the "Solar calc -
+    claude.xlsx" reference file.
+  - *Hybrid (Solar PV + Battery)* - the workbook's daytime-offset
+    methodology, plus Battery Sizing (Worst-Month and Annual-Average
+    scenarios).
+  - *Off-Grid (Solar PV + Battery)* - quick-calc methodology from the same
+    reference file, with generator sizing and an undersized-system warning
+    layered on top.
+
+  (`/solar`, `/battery`, `/offgrid` still exist as redirects to `/sizing` for
+  anyone with the old links bookmarked.)
 - **Non-linear seasonal solar production** - a 12-month yield-shape table
   (source: 'kWhkWp' sheet) drives the production charts and the Off-Grid
   worst-month check, scaling proportionally whenever the annual specific
   yield assumption changes.
-- **System Type selector** (`/`) on the Project Details page, which drives
-  which sections/pages are shown, per the application brief.
+- **System Type selector** (`/`) on the Project Details page - now just marks
+  which system is being proposed (used by the Quick Summary and future
+  costing phases); it no longer hides/shows sizing pages, since all three are
+  always computed and shown together on System Sizing.
 - The app ships seeded with the **real Mardale Apple Farm billing data**
   from the source workbook (as the default project's Version 1), so every
   number on screen can be checked against the original file directly.

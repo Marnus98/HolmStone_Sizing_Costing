@@ -19,8 +19,20 @@ const SYSTEM_TYPE_BLURB: Record<SystemType, string> = {
 };
 
 export default function ProjectDetailsPage() {
-  const { farmSiteName, setFarmSiteName, systemType, setSystemType, consumption, battery, solar, resetToMardaleDemo } = useProject();
+  const {
+    farmSiteName, setFarmSiteName, systemType, setSystemType, consumption,
+    battery, solarGridTied, solarHybrid, offGrid, resetToMardaleDemo,
+  } = useProject();
   const { activeProject, activeVersion, renameActiveProject } = useProjects();
+
+  // Quick summary reflects whichever system type is currently marked as the
+  // proposed one - all three are always sized in the background (see the
+  // System Sizing page for the full picture side by side).
+  const recommendedPvKwp =
+    systemType === "solar_pv_only" ? solarGridTied.recommendedPvKwp
+    : systemType === "off_grid" ? offGrid.recommendedPvKwp
+    : solarHybrid.recommendedPvKwp;
+  const recommendedBatteryKwh = systemType === "off_grid" ? offGrid.recommendedBatteryCapacityKwh : battery.recommendedCapacityKwh;
 
   return (
     <div>
@@ -39,7 +51,7 @@ export default function ProjectDetailsPage() {
               value={systemType}
               onChange={setSystemType}
               options={SYSTEM_TYPE_OPTIONS}
-              tooltip="Drives which sections and calculations are shown throughout the app."
+              tooltip="Marks which system you're proposing - used for this page's Quick Summary and future costing. All three system types are always sized on the System Sizing page regardless of this selection."
             />
             <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-500">{SYSTEM_TYPE_BLURB[systemType]}</p>
             <button
@@ -56,12 +68,13 @@ export default function ProjectDetailsPage() {
             <ResultTile label="Annual consumption" value={formatNumber(consumption.annualConsumptionKwh, 0)} unit="kWh" />
             <ResultTile label="Annual electricity cost" value={formatNumber(consumption.annualCostR, 0)} unit="R" />
             {systemType !== "solar_pv_only" && (
-              <ResultTile label="Recommended battery" value={formatNumber(battery.recommendedCapacityKwh, 0)} unit="kWh" />
+              <ResultTile label="Recommended battery" value={formatNumber(recommendedBatteryKwh, 0)} unit="kWh" />
             )}
-            <ResultTile label="Recommended PV" value={formatNumber(solar.recommendedPvKwp, 0)} unit="kWp" />
+            <ResultTile label="Recommended PV" value={formatNumber(recommendedPvKwp, 0)} unit="kWp" />
           </div>
           <p className="mt-4 text-xs text-slate-400">
-            Full sizing detail is on the Battery Sizing / Solar Sizing pages. Values recalculate automatically as you edit inputs.
+            Shown for the selected System Type above. Full detail for all three system types - Solar PV, Hybrid and
+            Off-Grid, sized side by side - is on the System Sizing page.
           </p>
         </Card>
       </div>
@@ -71,6 +84,7 @@ export default function ProjectDetailsPage() {
           <li>Multi-project support with version history (see the Projects page) - saved in this browser</li>
           <li>Section 1 &amp; 2 input capture (municipal bill history + tariff structure)</li>
           <li>Section 3 &amp; 4 auto-calculated consumption and cost analysis, with graphs</li>
+          <li>A single System Sizing page showing Solar PV, Hybrid and Off-Grid stacked together, always computed in the background - no tabs to switch between them</li>
           <li>Battery Sizing (Worst-Month and Annual-Average scenarios)</li>
           <li>Solar Sizing - Hybrid (daytime-offset methodology) and Grid-Tied/Solar PV-only (ratio quick calc)</li>
           <li>Off-Grid Sizing (quick-calc methodology, with a worst-month/generator undersized-system warning)</li>

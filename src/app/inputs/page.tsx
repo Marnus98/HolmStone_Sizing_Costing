@@ -16,7 +16,13 @@ import {
 } from "@/lib/tariffs";
 import type { EskomTariffId } from "@/lib/tariffs";
 
-const BILL_COLUMNS: { key: keyof MonthlyBillEntry; label: string; unit: string; advanced?: boolean }[] = [
+type BillColumn = { key: keyof MonthlyBillEntry; label: string; unit: string; advanced?: boolean };
+
+/** Full fixed column order - used for paste-from-Excel / CSV import so a pasted
+ *  table's column positions stay stable no matter which tariff is currently
+ *  selected (the grid itself only *displays* the subset relevant to the
+ *  selected tariff's shape - see energyColumnsFor below). */
+const BILL_COLUMNS: BillColumn[] = [
   { key: "peakLowKwh", label: "Peak (Low)", unit: "kWh" },
   { key: "peakLowRate", label: "Peak Rate (Low)", unit: "R/kWh" },
   { key: "peakHighKwh", label: "Peak (High)", unit: "kWh" },
@@ -45,6 +51,43 @@ const BILL_COLUMNS: { key: keyof MonthlyBillEntry; label: string; unit: string; 
   { key: "reactiveEnergyKvarh", label: "Reactive Energy", unit: "kVArh", advanced: true },
   { key: "reactiveEnergyRate", label: "Reactive Energy Rate", unit: "R/kVArh", advanced: true },
 ];
+
+const FIXED_COLUMN_KEYS: (keyof MonthlyBillEntry)[] = [
+  "networkCapacityKva", "networkCapacityRate", "networkAccessRate",
+  "ancillaryChargeRate", "networkDemandChargeRate", "legacyChargeRate",
+  "adminCharge", "serviceCharge",
+];
+
+/** Energy (kWh + rate) columns actually shown, shaped to the selected
+ *  tariff - matches the Eskom tariff sheet's own structure exactly:
+ *   - TOU tariffs (Megaflex/Miniflex/Ruraflex): full Peak/Standard/Off-Peak x High/Low grid.
+ *   - Nightsave Rural: a single Energy rate per season - two columns (High/Low), no Peak/Off-Peak.
+ *   - Landrate: one flat Energy rate, no season and no TOU at all - a single column.
+ *  Non-TOU tariffs still store their one/two consumption figures in the
+ *  standardHighKwh/standardLowKwh fields of MonthlyBillEntry (peak/off-peak
+ *  fields are cleared to 0 by "Apply to all months" - see applyTariffToAllMonths). */
+function energyColumnsFor(tariffId: EskomTariffId): BillColumn[] {
+  if (tariffId === "landrate") {
+    return [
+      { key: "standardHighKwh", label: "Energy consumption", unit: "kWh" },
+      { key: "standardHighRate", label: "Energy charge", unit: "R/kWh" },
+    ];
+  }
+  if (tariffId === "nightsave_rural") {
+    return [
+      { key: "standardHighKwh", label: "Energy (High season)", unit: "kWh" },
+      { key: "standardHighRate", label: "Energy charge (High season)", unit: "R/kWh" },
+      { key: "standardLowKwh", label: "Energy (Low season)", unit: "kWh" },
+      { key: "standardLowRate", label: "Energy charge (Low season)", unit: "R/kWh" },
+    ];
+  }
+  return BILL_COLUMNS.filter((c) =>
+    (["peakLowKwh", "peakLowRate", "peakHighKwh", "peakHighRate",
+      "offPeakLowKwh", "offPeakLowRate", "offPeakHighKwh", "offPeakHighRate",
+      "standardLowKwh", "standardLowRate", "standardHighKwh", "standardHighRate"] as (keyof MonthlyBillEntry)[]
+    ).includes(c.key)
+  );
+}
 
 export default function InputsPage() {
   const { bills, updateBill, addBillRow, removeBillRow, tariff, setTariff } = useProject();
@@ -79,6 +122,8 @@ export default function InputsPage() {
 
   function applyTariffToAllMonths() {
     if (!resolved) return;
+    const isNightsave = tariffId === "nightsave_rural";
+    const isLandrate = tariffId === "landrate";
 
     bills.forEach((bill, i) => {
       const days = daysInMonth(bill.month);
@@ -103,6 +148,19 @@ export default function InputsPage() {
         affordabilitySubsidyRate: resolved.affordabilitySubsidyRate,
         reactiveEnergyRate: resolved.reactiveEnergyChargeHighSeason, // high-season default; override per-row if the site's low-season reactive use matters
       };
+      // Nightsave Rural and Landrate have no Peak/Off-Peak split - clear
+      // those hidden fields so stale consumption from a previously-selected
+      // TOU tariff can't silently double up in the cost total. Landrate also
+      // has no season split, so its Low-season Standard field is cleared too.
+      if (isNightsave || isLandrate) {
+        patch.peakLowKwh = 0;
+        patch.peakHighKwh = 0;
+        patch.offPeakLowKwh = 0;
+        patch.offPeakHighKwh = 0;
+      }
+      if (isLandrate) {
+        patch.standardLowKwh = 0;
+      }
       updateBill(i, patch);
     });
 
@@ -162,7 +220,10 @@ export default function InputsPage() {
     reader.readAsText(file);
   }
 
-  const visibleColumns = BILL_COLUMNS.filter((c) => showAdvancedCols || !c.advanced);
+  const energyColumns = energyColumnsFor(tariffId);
+  const fixedColumns = BILL_COLUMNS.filter((c) => FIXED_COLUMN_KEYS.includes(c.key));
+  const advancedColumns = showAdvancedCols ? BILL_COLUMNS.filter((c) => c.advanced) : [];
+  const visibleColumns = [...energyColumns, ...fixedColumns, ...advancedColumns];
   const rowTotals = bills.map((b) => computeBillRowTotals(b));
   const annualTotalR = rowTotals.reduce((s, t) => s + t.totalBillR, 0);
   const annualKwh = rowTotals.reduce((s, t) => s + t.totalKwh, 0);
@@ -221,10 +282,10 @@ export default function InputsPage() {
         </div>
 
         {!meta.hasTou && (
-          <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
             {meta.id === "nightsave_rural"
-              ? "Nightsave Rural has a single energy rate per season (no Peak/Standard/Off-Peak split). Enter total monthly consumption in the Standard (High)/Standard (Low) columns below and leave Peak/Off-Peak at 0."
-              : "Landrate has no Time-of-Use split at all. Enter total monthly consumption in the Standard (High) column below (Low-season columns can stay 0, since Landrate doesn't distinguish seasons either)."}
+              ? "Nightsave Rural has no Peak/Standard/Off-Peak split - just one energy rate per season. The grid below shows a single High-season and Low-season consumption column."
+              : "Landrate has no Time-of-Use split and no season split - just one energy rate. The grid below shows a single consumption column."}
           </p>
         )}
 
@@ -244,7 +305,9 @@ export default function InputsPage() {
         )}
         <p className="mt-2 text-[11px] text-slate-400">
           Source: Eskom NLA tariff book, 1 April 2026, rates excl. VAT. Applying overwrites every month&apos;s rate
-          columns (not consumption) and Section 2 below - re-apply after changing the selection.
+          columns and Section 2 below; for Nightsave Rural/Landrate it also clears the Peak/Off-Peak (and, for
+          Landrate, Low-season) consumption fields since they don&apos;t apply to those tariffs. Re-apply after
+          changing the selection.
         </p>
       </Card>
 

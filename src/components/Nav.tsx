@@ -5,33 +5,21 @@ import { usePathname } from "next/navigation";
 import { useProject } from "@/lib/context/ProjectContext";
 import { useProjects } from "@/lib/projects/store";
 
-const BASE_LINKS = [
+// Solar/Battery/Off-Grid Sizing are no longer separate tabs gated by System
+// Type - they're always computed together and shown stacked on one page
+// (/sizing), so every project gets the same nav regardless of system type.
+const LINKS = [
   { href: "/projects", label: "Projects" },
   { href: "/", label: "Project Details" },
   { href: "/inputs", label: "Inputs" },
   { href: "/consumption", label: "Consumption Analysis" },
+  { href: "/sizing", label: "System Sizing" },
 ];
-
-const SYSTEM_LINKS: Record<string, { href: string; label: string }[]> = {
-  hybrid: [
-    { href: "/battery", label: "Battery Sizing" },
-    { href: "/solar", label: "Solar Sizing" },
-  ],
-  off_grid: [
-    { href: "/battery", label: "Battery Sizing" },
-    { href: "/solar", label: "Solar Sizing" },
-    { href: "/offgrid", label: "Off-Grid Sizing" },
-  ],
-  solar_pv_only: [
-    { href: "/solar", label: "Solar Sizing" },
-  ],
-};
 
 export function Nav() {
   const pathname = usePathname();
-  const { systemType, farmSiteName } = useProject();
+  const { farmSiteName } = useProject();
   const { activeProject, activeVersion, switchVersion } = useProjects();
-  const links = [...BASE_LINKS, ...SYSTEM_LINKS[systemType]];
 
   return (
     <nav className="flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-900 text-slate-200">
@@ -57,7 +45,7 @@ export function Nav() {
         )}
       </div>
       <ul className="flex-1 space-y-0.5 px-2 py-4">
-        {links.map((l) => {
+        {LINKS.map((l) => {
           const active = pathname === l.href;
           return (
             <li key={l.href}>
