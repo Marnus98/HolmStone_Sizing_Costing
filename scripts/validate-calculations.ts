@@ -13,6 +13,7 @@ import { computeBatterySizing, DEFAULT_BATTERY_ASSUMPTIONS } from "../src/lib/ca
 import { computeSolarSizing, defaultSolarAssumptions } from "../src/lib/calculations/solarSizing.ts";
 import { computeOffGridSizing, DEFAULT_OFFGRID_ASSUMPTIONS } from "../src/lib/calculations/offGridSizing.ts";
 import type { ConsumptionSummary } from "../src/lib/calculations/types.ts";
+import { resolveEskomTariff } from "../src/lib/tariffs/resolveTariff.ts";
 
 let pass = 0;
 let fail = 0;
@@ -78,6 +79,26 @@ check("Panel count", solar.panelCount, 45);
 check("Actual installed (kWp)", solar.actualInstalledKwp, 27.9, 0.001);
 check("Recommended PV (kWp)", solar.recommendedPvKwp, 30);
 check("Recommended grid/hybrid inverter (kW)", solar.recommendedGridInverterKw, 80);
+
+console.log("\n=== Eskom tariff catalog: Ruraflex NLA, Tx zone > 900km, < 500V ===\n");
+// Cross-check against mardaleTariff/mardaleBills' April 2026 row, which was
+// independently transcribed from the original Mardale workbook and is known
+// to be Ruraflex zone 3 (>900km) / voltage 1 (<500V) - see mardaleAppleFarm.ts.
+const ruraflexZ3V1 = resolveEskomTariff({ tariffId: "ruraflex", zone: 3, voltage: 1, customerCategory: "≤ 100 kVA" });
+if (!ruraflexZ3V1) {
+  fail++;
+  console.log("  FAIL Ruraflex zone3/voltage1 did not resolve");
+} else {
+  check("Peak High rate (R/kWh)", ruraflexZ3V1.peakHighRate, 7.6858, 0.0001);
+  check("Standard High rate (R/kWh)", ruraflexZ3V1.standardHighRate, 1.9214, 0.0001);
+  check("Off-Peak High rate (R/kWh)", ruraflexZ3V1.offPeakHighRate, 1.2808, 0.0001);
+  check("Peak Low rate (R/kWh)", ruraflexZ3V1.peakLowRate, 3.1896, 0.0001);
+  check("Standard Low rate (R/kWh)", ruraflexZ3V1.standardLowRate, 1.7934, 0.0001);
+  check("Off-Peak Low rate (R/kWh)", ruraflexZ3V1.offPeakLowRate, 1.2808, 0.0001);
+  check("Legacy charge (R/kWh)", ruraflexZ3V1.legacyChargeRate, 0.2501, 0.0001);
+  check("Network capacity rate (R/kVA)", ruraflexZ3V1.networkCapacityRate, 56.95, 0.001);
+  check("Network demand charge (R/kWh)", ruraflexZ3V1.networkDemandChargeRate, 0.5255, 0.0001);
+}
 
 // --- New reference file: "Solar calc - claude.xlsx" ---
 // Both the 'Solar Grid Tied Calc' and 'Off-Grid' sheets key off the same

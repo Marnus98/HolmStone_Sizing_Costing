@@ -110,6 +110,44 @@ the generator-backup and generator-sizing checks.
 | Off-grid generator power factor | 0.8 | Industry-standard default (app addition) |
 | Eskom High Demand Season months | Jun/Jul/Aug | Eskom RuraFlex definition |
 
+## Eskom tariff catalog (new)
+
+`src/lib/tariffs/` adds a built-in Eskom Non-Local-Authority (NLA - direct
+Eskom customer, not billed through a municipality) tariff catalog, sourced
+from the uploaded "Eskom-tariffs-1-April-2026-Public.xlsm", covering
+Megaflex, Miniflex, Ruraflex, Nightsave Rural and Landrate. Selecting a
+tariff (+ transmission zone + voltage + kVA customer-category band, or a
+Landrate variant) and clicking "Apply to all months" on the Inputs page
+auto-fills every rate field for every bill row plus Section 2's tariff
+structure - the user only enters kWh consumption. All rates are captured
+**excluding VAT**, matching the convention already used by the app's
+Mardale seed data (verified: Ruraflex NLA zone 3 / voltage 1's catalog
+values match `mardaleTariff`'s figures exactly - see the golden-value test
+"Eskom tariff catalog: Ruraflex NLA, Tx zone > 900km, < 500V", 9/9 pass).
+
+Scope decisions (confirmed with the user):
+- **NLA only for this build** - the workbook also has Municipal ("Munic")
+  rate tables with different values; not yet wired in. Add if a project is
+  actually billed through a municipality rather than directly by Eskom.
+- **Every charge line item is modelled**, including the less common ones:
+  generation capacity charge, transmission network charge (Megaflex only),
+  urban low-voltage subsidy, electrification/rural network subsidy,
+  affordability subsidy, and reactive energy - added as new optional fields
+  on `MonthlyBillEntry` (default 0, so existing rows/tests are unaffected)
+  and included in `computeBillRowTotals`'s `totalBillR`.
+- **Nightsave Rural's seasonal "Energy demand charge" (R/kVA/m, varies by
+  High/Low season)** is captured in the catalog data but not yet wired into
+  a bill row - there's no seasonal-kVA-charge field in the model yet. Minor
+  gap, flagged rather than silently dropped.
+- **Landrate has no kVA metering concept** - its "network capacity" and
+  "generation capacity" charges are R/POD/day, not R/kVA/m, so they're
+  folded into `adminChargeRate` alongside its own service/administration
+  charge rather than forcing them onto the kVA-based fields.
+- **Service and administration charges** are billed R/POD/day per the
+  catalog; the Inputs page multiplies by the actual number of days in each
+  bill row's calendar month when applying a tariff (28-31 days), rather
+  than using a flat monthly figure.
+
 ## Multi-project & version history (new)
 
 `src/lib/projects/` adds project + version management: create a new

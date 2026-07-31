@@ -14,8 +14,11 @@ deferred" below.
   create numbered versions (Version 1, Version 2, ...) within a project.
   Saved to the browser's `localStorage` as the Phase 1 stopgap until Phase
   2/3's real database lands.
-- **Inputs** (`/inputs`) - Section 1 (municipal bill history: manual entry,
-  paste-from-Excel, or CSV upload) and Section 2 (tariff structure).
+- **Inputs** (`/inputs`) - an Eskom tariff selector (Megaflex, Miniflex,
+  Ruraflex, Nightsave Rural, Landrate - transmission zone, voltage, kVA
+  customer category) that auto-fills the full rate breakdown, Section 1
+  (municipal bill history: manual entry, paste-from-Excel, or CSV upload,
+  with computed per-row and annual totals), and Section 2 (tariff structure).
 - **Consumption Analysis** (`/consumption`) - Section 3 & 4, auto-calculated
   monthly/annual consumption and cost, with bar and pie charts (Recharts).
 - **Battery Sizing** (`/battery`) - Worst-Month and Annual-Average scenarios,
@@ -48,7 +51,7 @@ the values Excel itself produced:
 node --experimental-strip-types scripts/validate-calculations.ts
 ```
 
-Current result: **29/29 checks pass** - annual/monthly consumption and cost,
+Current result: **38/38 checks pass** - annual/monthly consumption and cost,
 both Battery Sizing scenarios, and Solar Sizing (Hybrid) all match the
 original Mardale workbook's own output; the Grid-Tied and Off-Grid quick
 calcs match the new "Solar calc - claude.xlsx" reference file's own numbers
@@ -134,6 +137,7 @@ src/
     calculations/         Pure calculation-engine modules (the source of truth)
     context/               Live-editing state for the active project+version
     projects/              Multi-project / version-history store (localStorage-backed)
+    tariffs/                Eskom NLA tariff catalog (Megaflex/Miniflex/Ruraflex/Nightsave Rural/Landrate) + resolver
     seed/                  Real Mardale Apple Farm demo data
     format.ts              ZAR / number / percentage formatting helpers
 scripts/

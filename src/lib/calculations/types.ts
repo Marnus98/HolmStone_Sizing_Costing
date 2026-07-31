@@ -33,6 +33,23 @@ export interface MonthlyBillEntry {
   legacyChargeRate: number; // R/kWh
   adminCharge: number; // R
   serviceCharge: number; // R
+
+  // --- Added for the Eskom tariff catalog (auto-filled by tariff/zone/voltage
+  // selection - see src/lib/tariffs). Optional so existing rows/tests without
+  // them keep working; computeBillRowTotals treats a missing value as 0. ---
+  /** R/kVA/m, applied to networkCapacityKva. Megaflex/Miniflex/Ruraflex/Nightsave Rural 'Generation capacity charge'. */
+  generationCapacityRate?: number;
+  /** R/kVA/m, applied to networkCapacityKva. Megaflex-only 'Transmission network charges'. */
+  transmissionNetworkRate?: number;
+  /** R/kVA/m, applied to networkCapacityKva. Megaflex/Miniflex 'Urban low voltage subsidy charge' (usually 0). */
+  urbanLowVoltageSubsidyRate?: number;
+  /** R/kWh, applied to total kWh for the row. Megaflex/Miniflex 'Electrification and rural network subsidy charge'. */
+  electrificationSubsidyRate?: number;
+  /** R/kWh, applied to total kWh for the row. Megaflex/Miniflex 'Affordability subsidy charge'. */
+  affordabilitySubsidyRate?: number;
+  /** Reactive energy penalty - consumption (kVArh) and its season-resolved rate (R/kVArh). Megaflex/Miniflex/Ruraflex only. */
+  reactiveEnergyKvarh?: number;
+  reactiveEnergyRate?: number;
 }
 
 /** Section 2 — tariff structure assumptions (Inputs!C22:D41). */

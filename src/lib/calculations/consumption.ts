@@ -35,7 +35,18 @@ export function monthLabel(monthNum: number): string {
   return MONTH_NAMES[(monthNum - 1 + 12) % 12];
 }
 
-/** Per-row bill total (Inputs!G,L,Q,U,V,Z,AA-AF columns). */
+/** Number of days in the calendar month of an ISO date - used to turn the
+ *  Eskom tariff catalog's R/POD/day service & admin rates into a per-bill-row
+ *  R amount when auto-filling a tariff (see src/lib/tariffs). */
+export function daysInMonth(isoDate: string): number {
+  const d = new Date(isoDate + "T00:00:00Z");
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+}
+
+/** Per-row bill total (Inputs!G,L,Q,U,V,Z,AA-AF columns), extended with the
+ *  additional Eskom charge line items the tariff catalog can auto-fill
+ *  (see src/lib/tariffs) - all optional on MonthlyBillEntry, so missing
+ *  values are treated as 0 and existing rows/tests are unaffected. */
 export interface BillRowTotals {
   peakTotalR: number; // G = C*D + E*F
   offPeakTotalR: number; // L = H*I + J*K
@@ -43,7 +54,13 @@ export interface BillRowTotals {
   networkCapacityTotalR: number; // U = R*(S+T)
   totalKwh: number; // V = C+E+H+J+M+O
   ancillaryNetworkLegacyTotalR: number; // Z = V*(W+X+Y)
-  totalBillR: number; // AC = Z+U+Q+L+G+AB+AA
+  /** New kVA-based charges (generation capacity, transmission network, urban low-voltage subsidy) x networkCapacityKva. */
+  additionalKvaChargesR: number;
+  /** New R/kWh subsidy charges (electrification, affordability) x totalKwh. */
+  subsidyChargesR: number;
+  /** Reactive energy penalty, reactiveEnergyKvarh x reactiveEnergyRate. */
+  reactiveEnergyR: number;
+  totalBillR: number; // AC = Z+U+Q+L+G+AB+AA, extended with the three items above
   totalBillExclAdminServiceR: number; // AD = G+L+Q+Z
   blendedRPerKwh: number; // AE = AD/V
   combinedDemandChargeRPerKva: number; // AF = S+T (bug-fixed: always includes T)
@@ -59,13 +76,26 @@ export function computeBillRowTotals(row: MonthlyBillEntry): BillRowTotals {
     row.standardLowKwh + row.standardHighKwh;
   const ancillaryNetworkLegacyTotalR =
     totalKwh * (row.ancillaryChargeRate + row.networkDemandChargeRate + row.legacyChargeRate);
+  const additionalKvaChargesR =
+    row.networkCapacityKva *
+    ((row.generationCapacityRate ?? 0) + (row.transmissionNetworkRate ?? 0) + (row.urbanLowVoltageSubsidyRate ?? 0));
+  const subsidyChargesR = totalKwh * ((row.electrificationSubsidyRate ?? 0) + (row.affordabilitySubsidyRate ?? 0));
+  const reactiveEnergyR = (row.reactiveEnergyKvarh ?? 0) * (row.reactiveEnergyRate ?? 0);
   const totalBillExclAdminServiceR = peakTotalR + offPeakTotalR + standardTotalR + ancillaryNetworkLegacyTotalR;
-  const totalBillR = totalBillExclAdminServiceR + networkCapacityTotalR + row.adminCharge + row.serviceCharge;
+  const totalBillR =
+    totalBillExclAdminServiceR +
+    networkCapacityTotalR +
+    row.adminCharge +
+    row.serviceCharge +
+    additionalKvaChargesR +
+    subsidyChargesR +
+    reactiveEnergyR;
   const blendedRPerKwh = totalKwh === 0 ? 0 : totalBillExclAdminServiceR / totalKwh;
   const combinedDemandChargeRPerKva = row.networkCapacityRate + row.networkAccessRate;
   return {
     peakTotalR, offPeakTotalR, standardTotalR, networkCapacityTotalR, totalKwh,
-    ancillaryNetworkLegacyTotalR, totalBillR, totalBillExclAdminServiceR,
+    ancillaryNetworkLegacyTotalR, additionalKvaChargesR, subsidyChargesR, reactiveEnergyR,
+    totalBillR, totalBillExclAdminServiceR,
     blendedRPerKwh, combinedDemandChargeRPerKva,
   };
 }
