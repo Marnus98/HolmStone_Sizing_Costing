@@ -1,29 +1,13 @@
 {
-  "name": "mardale-solar-sizing",
-  "version": "0.1.0",
+  "name": "holmstone-utility-management-platform",
+  "version": "0.2.0",
   "private": true,
-  "engines": {
-    "node": ">=20.0.0"
-  },
+  "description": "HolmStone Utility Management Platform - multi-property tenant utility billing (City Deep Industrial Park, Wingfield Business Park) - zero external dependencies (see README).",
+  "engines": { "node": ">=22.5.0" },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "test": "vitest run"
+    "seed": "node city-deep/seed.js",
+    "seed:wingfield": "node wingfield/seed_wingfield.js",
+    "start": "node server.js"
   },
-  "dependencies": {
-    "next": "16.2.12",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "recharts": "^2.15.0"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "tailwindcss": "^4",
-    "typescript": "^5",
-    "vitest": "^2.1.8"
-  }
+  "dependencies": {}
 }

@@ -1,22 +1,12 @@
-# Render Blueprint - Phase 1 (no database yet)
-#
-# This deploys the calculators-only build as a single Node web service.
-# Once Phase 2 adds PostgreSQL + Prisma, a `databases:` block will be added
-# here and DATABASE_URL wired into the web service's `envVars`.
-#
-# To use: push this repo to GitHub, then in Render choose
-# New -> Blueprint -> connect this repo. Render reads this file automatically.
-
 services:
   - type: web
-    name: mardale-solar-sizing
-    runtime: node
-    plan: starter
-    region: frankfurt
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
+    name: holmstone-utility-management-platform
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node --experimental-sqlite server.js
     envVars:
+      - key: SESSION_SECRET
+        generateValue: true
       - key: NODE_VERSION
-        value: 20.18.0
-      - key: NODE_ENV
-        value: production
+        value: 22.9.0
