@@ -24,16 +24,23 @@ import type {
   SolarSizingAssumptions,
   OffGridSizingAssumptions,
 } from "@/lib/calculations/types";
+import type { LcoeAssumptions, LcoeSystemType } from "@/lib/calculations/lcoe.ts";
 import {
   computeConsumptionSummary,
   computeBatterySizing,
   computeSolarSizing,
   computeOffGridSizing,
+  computeLcoe,
 } from "@/lib/calculations";
 import type { ProjectData } from "@/lib/projects/types";
 import { useProjects, defaultProjectData } from "@/lib/projects/store";
 import { mardaleBills, mardaleTariff } from "@/lib/seed/mardaleAppleFarm";
-import { DEFAULT_BATTERY_ASSUMPTIONS, defaultSolarAssumptions, DEFAULT_OFFGRID_ASSUMPTIONS } from "@/lib/calculations";
+import {
+  DEFAULT_BATTERY_ASSUMPTIONS,
+  defaultSolarAssumptions,
+  DEFAULT_OFFGRID_ASSUMPTIONS,
+  defaultLcoeAssumptions,
+} from "@/lib/calculations";
 
 type ProjectState = ProjectData;
 
@@ -48,6 +55,8 @@ interface ProjectContextValue extends ProjectState {
   setBatteryAssumptions: (patch: Partial<BatterySizingAssumptions>) => void;
   setSolarAssumptions: (patch: Partial<SolarSizingAssumptions>) => void;
   setOffGridAssumptions: (patch: Partial<OffGridSizingAssumptions>) => void;
+  setLcoeAssumptions: (patch: Partial<LcoeAssumptions>) => void;
+  setLcoeSystemType: (v: LcoeSystemType) => void;
   resetToMardaleDemo: () => void;
 
   // Derived / calculated - ALL THREE system-type scenarios are always
@@ -62,6 +71,14 @@ interface ProjectContextValue extends ProjectState {
   /** Hybrid daytime-offset methodology (Solar PV + Battery) - always computed. */
   solarHybrid: ReturnType<typeof computeSolarSizing>;
   offGrid: ReturnType<typeof computeOffGridSizing>;
+
+  // LCOE & Savings - defaulted here (rather than left possibly-undefined)
+  // so every consumer gets a real value even for projects/versions saved
+  // before this feature existed.
+  lcoeAssumptions: LcoeAssumptions;
+  lcoeSystemType: LcoeSystemType;
+  /** LCOE/LCOS + 20-year savings for whichever system type lcoeSystemType currently selects. */
+  lcoe: ReturnType<typeof computeLcoe>;
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -85,6 +102,8 @@ function mardaleDemoData(): ProjectData {
     batteryAssumptions: DEFAULT_BATTERY_ASSUMPTIONS,
     solarAssumptions: defaultSolarAssumptions("hybrid"),
     offGridAssumptions: DEFAULT_OFFGRID_ASSUMPTIONS,
+    lcoeAssumptions: defaultLcoeAssumptions(),
+    lcoeSystemType: "hybrid",
   };
 }
 
@@ -140,6 +159,19 @@ function InnerProjectProvider({
     setState((s) => ({ ...s, solarAssumptions: { ...s.solarAssumptions, ...patch } }));
   const setOffGridAssumptions = (patch: Partial<OffGridSizingAssumptions>) =>
     setState((s) => ({ ...s, offGridAssumptions: { ...s.offGridAssumptions, ...patch } }));
+
+  // Backward-compatible defaults for projects/versions saved before the LCOE
+  // feature existed (lcoeAssumptions/lcoeSystemType are optional on ProjectData).
+  const effectiveLcoeAssumptions: LcoeAssumptions =
+    state.lcoeAssumptions ?? defaultLcoeAssumptions(state.solarAssumptions.mountingType);
+  const effectiveLcoeSystemType: LcoeSystemType = state.lcoeSystemType ?? state.systemType;
+
+  const setLcoeAssumptions = (patch: Partial<LcoeAssumptions>) =>
+    setState((s) => ({
+      ...s,
+      lcoeAssumptions: { ...(s.lcoeAssumptions ?? defaultLcoeAssumptions(s.solarAssumptions.mountingType)), ...patch },
+    }));
+  const setLcoeSystemType = (v: LcoeSystemType) => setState((s) => ({ ...s, lcoeSystemType: v }));
 
   const resetToMardaleDemo = () => setState(mardaleDemoData());
 
@@ -205,6 +237,48 @@ function InnerProjectProvider({
     [consumption, state.offGridAssumptions]
   );
 
+  // LCOE & Savings - pulls its Solar kWp / annual yield / battery kWh straight
+  // from whichever System Sizing result matches the currently-selected
+  // lcoeSystemType, and its avoided-cost tariffs from Consumption Analysis's
+  // blended rates. See lcoe.ts for full provenance/assumption notes.
+  const lcoe = useMemo(() => {
+    let pvKwp = 0;
+    let annualYieldKwhPerKwp = state.solarAssumptions.annualSpecificYieldKwhPerKwp;
+    let batteryKwh = 0;
+    if (effectiveLcoeSystemType === "solar_pv_only") {
+      pvKwp = solarGridTied.recommendedPvKwp;
+      annualYieldKwhPerKwp = state.solarAssumptions.annualSpecificYieldKwhPerKwp;
+    } else if (effectiveLcoeSystemType === "hybrid") {
+      pvKwp = solarHybrid.recommendedPvKwp;
+      annualYieldKwhPerKwp = state.solarAssumptions.specificYieldKwhPerKwpPerDay * 365;
+      batteryKwh = battery.recommendedCapacityKwh;
+    } else {
+      pvKwp = offGrid.recommendedPvKwp;
+      annualYieldKwhPerKwp =
+        state.offGridAssumptions.solarPeakSunHours * state.offGridAssumptions.solarDeratingFactor * 365;
+      batteryKwh = offGrid.recommendedBatteryCapacityKwh;
+    }
+    return computeLcoe(
+      effectiveLcoeSystemType,
+      pvKwp,
+      annualYieldKwhPerKwp,
+      batteryKwh,
+      consumption.blendedTariffs.standard,
+      consumption.blendedTariffs.peak,
+      effectiveLcoeAssumptions
+    );
+  }, [
+    effectiveLcoeSystemType,
+    effectiveLcoeAssumptions,
+    solarGridTied,
+    solarHybrid,
+    offGrid,
+    battery,
+    state.solarAssumptions,
+    state.offGridAssumptions,
+    consumption,
+  ]);
+
   const value: ProjectContextValue = {
     ...state,
     setFarmSiteName,
@@ -217,6 +291,8 @@ function InnerProjectProvider({
     setBatteryAssumptions,
     setSolarAssumptions,
     setOffGridAssumptions,
+    setLcoeAssumptions,
+    setLcoeSystemType,
     resetToMardaleDemo,
     consumption,
     battery,
@@ -224,6 +300,9 @@ function InnerProjectProvider({
     solarGridTied,
     solarHybrid,
     offGrid,
+    lcoeAssumptions: effectiveLcoeAssumptions,
+    lcoeSystemType: effectiveLcoeSystemType,
+    lcoe,
   };
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;

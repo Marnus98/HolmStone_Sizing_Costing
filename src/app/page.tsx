@@ -89,6 +89,7 @@ export default function ProjectDetailsPage() {
           <li>Solar Sizing - Hybrid (daytime-offset methodology) and Grid-Tied/Solar PV-only (ratio quick calc)</li>
           <li>Off-Grid Sizing (quick-calc methodology, with a worst-month/generator undersized-system warning)</li>
           <li>Non-linear seasonal solar production modelling, scaling proportionally with the annual yield assumption</li>
+          <li>LCOE &amp; Savings - Solar LCOE / Battery LCOS, simple payback and a 20-year savings model, pulled straight from System Sizing and Consumption Analysis</li>
           <li>All calculations validated against the source workbooks&apos; own numbers (see docs/assumptions.md)</li>
         </ul>
         <p className="mt-3 text-sm text-slate-500">

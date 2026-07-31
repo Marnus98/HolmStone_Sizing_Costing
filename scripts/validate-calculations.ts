@@ -14,6 +14,7 @@ import { computeSolarSizing, defaultSolarAssumptions } from "../src/lib/calculat
 import { computeOffGridSizing, DEFAULT_OFFGRID_ASSUMPTIONS } from "../src/lib/calculations/offGridSizing.ts";
 import type { ConsumptionSummary } from "../src/lib/calculations/types.ts";
 import { resolveEskomTariff } from "../src/lib/tariffs/resolveTariff.ts";
+import { computeLcoe, type LcoeAssumptions } from "../src/lib/calculations/lcoe.ts";
 
 let pass = 0;
 let fail = 0;
@@ -177,6 +178,76 @@ if (undersized.isUndersizedWarning) {
 } else {
   fail++;
   console.log("  FAIL Expected undersized warning to trigger, but it did not");
+}
+
+console.log("\n=== Scenario: LCOE & Savings ('LCOE' sheet, LCOE - Claude.xlsx) ===\n");
+// Reference sheet's own inputs, with insurance=0 to match (the source sheet
+// has no insurance line - that's an app-level addition, checked separately below).
+const lcoeGoldenAssumptions: LcoeAssumptions = {
+  interestRatePct: 0.1025,
+  solarProjectYears: 20,
+  solarCostPerKwpR: 8583, // sheet B7 * 1000
+  dsmFundingR: 0,
+  solarMaintenancePct: 0.03,
+  solarInsurancePct: 0,
+  solarDegradationPctPerYear: 0.0055,
+  batteryProjectYears: 15,
+  batteryDodPct: 0.9,
+  batteryCyclesPerDay: 1,
+  batteryCostPerKwhR: 4450,
+  batteryMaintenancePct: 0.025,
+  batteryInsurancePct: 0,
+  tariffEscalationPct: 0.09,
+};
+const lcoeGolden = computeLcoe("hybrid", 1500, 1500, 2313, 2.26095, 4.48905, lcoeGoldenAssumptions);
+check("Solar CAPEX (B8)", lcoeGolden.solar.capexR, 12874500, 1);
+check("Solar LCOE simple (B11)", lcoeGolden.solar.lcoeSimpleRPerKwh, 0.2861, 0.001);
+check("Solar cost of capital/yr (B13)", lcoeGolden.solar.costOfCapitalRPerYear, 1538119.4811608412, 1);
+check("Solar maintenance/yr (B14)", lcoeGolden.solar.maintenanceRPerYear, 386235, 0.01);
+check("Solar project cost (B15)", lcoeGolden.solar.projectCostR, 38487089.62321682, 1);
+check("Solar LCOE cost-of-capital (B16)", lcoeGolden.solar.lcoeCostOfCapitalRPerKwh, 0.8552686582937071, 0.0001);
+check("Battery CAPEX (G12)", lcoeGolden.battery!.capexR, 10292850, 1);
+check("Battery LCOS simple (G13)", lcoeGolden.battery!.losSimpleRPerKwh, 0.9030948756976154, 0.001);
+check("Battery cost of capital/yr (G15)", lcoeGolden.battery!.costOfCapitalRPerYear, 1372607.560310351, 1);
+check("Battery project cost (G17)", lcoeGolden.battery!.projectCostR, 24448932.154655263, 1);
+check("Battery LCOS cost-of-capital (G18)", lcoeGolden.battery!.lcosCostOfCapitalRPerKwh, 2.1451498219781526, 0.0001);
+check("Year 1 total savings (H27)", lcoeGolden.years[0].totalSavingsR, 3225810.264578808, 1);
+check("Year 1 cumulative (I27)", lcoeGolden.years[0].cumulativeSavingsR, 3225810.264578808, 1);
+check("Year 3 total savings (H29)", lcoeGolden.years[2].totalSavingsR, 4471215.250046365, 1);
+check("Year 3 cumulative (I29)", lcoeGolden.years[2].cumulativeSavingsR, 11519855.488330735, 1);
+check("Year 16 battery savings = 0 (G42, battery retired)", lcoeGolden.years[15].batterySavingsR, 0, 0.001);
+check("Year 16 total savings (H42)", lcoeGolden.years[15].totalSavingsR, 10124618.058621215, 1);
+check("Year 20 cumulative (I46)", lcoeGolden.years[19].cumulativeSavingsR, 202944027.69871834, 1);
+
+console.log("\n-- LCOE app-level addition: Project insurance line (not in source sheet) --");
+const lcoeWithInsurance = computeLcoe("hybrid", 1500, 1500, 2313, 2.26095, 4.48905, {
+  ...lcoeGoldenAssumptions,
+  solarInsurancePct: 0.01,
+  batteryInsurancePct: 0.01,
+});
+if (
+  lcoeWithInsurance.solar.insuranceRPerYear > 0 &&
+  lcoeWithInsurance.solar.projectCostR > lcoeGolden.solar.projectCostR &&
+  lcoeWithInsurance.battery!.insuranceRPerYear > 0
+) {
+  pass++;
+  console.log(
+    `  OK   Insurance adds R${lcoeWithInsurance.solar.insuranceRPerYear.toFixed(0)}/yr (solar) + ` +
+      `R${lcoeWithInsurance.battery!.insuranceRPerYear.toFixed(0)}/yr (battery), correctly raising project cost/LCOE`
+  );
+} else {
+  fail++;
+  console.log("  FAIL Insurance line did not increase project cost as expected");
+}
+
+console.log("\n-- LCOE: Solar PV-only (no battery) --");
+const lcoeSolarOnly = computeLcoe("solar_pv_only", 30, 1565.36, 0, 2.5, 4.5, lcoeGoldenAssumptions);
+if (lcoeSolarOnly.battery === null && lcoeSolarOnly.years.every((y) => y.batterySavingsR === 0)) {
+  pass++;
+  console.log("  OK   Solar PV-only correctly has no battery block and zero battery savings in every year");
+} else {
+  fail++;
+  console.log("  FAIL Solar PV-only should have no battery block / battery savings");
 }
 
 console.log(`\n=== RESULT: ${pass} passed, ${fail} failed ===`);

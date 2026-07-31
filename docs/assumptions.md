@@ -109,6 +109,19 @@ the generator-backup and generator-sizing checks.
 | Off-grid solar PSH / derating / margin | 4 hr, 80%, 1.1x | Solar calc - claude.xlsx, 'Off-Grid'!B5 |
 | Off-grid generator power factor | 0.8 | Industry-standard default (app addition) |
 | Eskom High Demand Season months | Jun/Jul/Aug | Eskom RuraFlex definition |
+| LCOE interest rate (shared, Solar & Battery) | 10.25% | LCOE - Claude.xlsx |
+| LCOE Solar project life | 20 years | LCOE - Claude.xlsx |
+| LCOE Solar cost/kWp | R11,000 (ground) / R9,000 (roof) | User-supplied placeholder, no BOQ source yet |
+| LCOE Solar maintenance | 3%/yr of CAPEX | LCOE - Claude.xlsx |
+| LCOE Solar insurance | 1%/yr of CAPEX | **New app addition** - user-supplied |
+| LCOE Solar degradation | 0.55%/yr | LCOE - Claude.xlsx |
+| LCOE Battery project life | 15 years | LCOE - Claude.xlsx |
+| LCOE Battery DoD | 90% | LCOE - Claude.xlsx |
+| LCOE Battery cycles/day | 1 | LCOE - Claude.xlsx |
+| LCOE Battery cost/kWh | R4,450 | LCOE - Claude.xlsx (implied), no BOQ source yet |
+| LCOE Battery maintenance | 2.5%/yr of CAPEX | LCOE - Claude.xlsx |
+| LCOE Battery insurance | 1%/yr of CAPEX | **New app addition** - user-supplied |
+| LCOE tariff escalation | 9%/yr | LCOE - Claude.xlsx |
 
 ## Eskom tariff catalog (new)
 
@@ -148,6 +161,67 @@ Scope decisions (confirmed with the user):
   bill row's calendar month when applying a tariff (28-31 days), rather
   than using a flat monthly figure.
 
+## LCOE & Savings (new)
+
+`src/lib/calculations/lcoe.ts` adds a Levelised Cost of Energy / Levelised
+Cost of Storage (LCOE/LCOS) + 20-year savings model, source: "LCOE -
+Claude.xlsx" ('LCOE' sheet). Unlike the other reference workbooks, this one
+pulled its Solar/BESS size, CAPEX-per-kW/kWh and blended tariff inputs from
+two *external* linked workbooks ('[1]Costing Sheet' and '[1]Inputs' - i.e. a
+real project's own separately-maintained costing and Inputs tabs) that were
+not supplied. Per the brief ("all inputs should be pulled from the system
+size tab"), the app instead wires the size inputs straight from this app's
+own System Sizing results and Consumption Analysis's blended tariffs. Every
+PMT/cost-of-capital/LCOE/LCOS/savings formula is transcribed literally from
+the sheet and validated against its own numbers (18 golden-value checks,
+`node --experimental-strip-types scripts/validate-calculations.ts`).
+
+Two things were **added** beyond the source sheet, both at the user's
+explicit request:
+
+1. **Project insurance** - a new annual cost line, 1% of CAPEX/year by
+   default (editable), applied separately to both the Solar and Battery
+   blocks alongside their existing maintenance % lines. The source sheet has
+   no insurance line at all.
+2. **Mounting-type-dependent installed cost/kWp default** - ~R11,000/kWp for
+   ground mount, ~R9,000/kWp for roof mount (both editable placeholders, per
+   the user's own figures). CAPEX cost/kWp (Solar) and cost/kWh (Battery)
+   have **no real source yet** - Phase 2/3's BOQ costing module isn't built -
+   so both are plain editable assumptions rather than pulled from a costing
+   sheet, and will most likely change once real BOQ costing exists.
+
+One simplification vs. the source sheet, flagged rather than silently
+folded in: the sheet technically has **two** separate interest-rate cells
+(one for Solar, one for BESS), both defaulting to the same 10.25% with a
+currently-zero manual adjustment. The app uses a **single shared** "Interest
+rate" input for both annuity calculations - a defensible simplification for
+one blended project loan, matching the user's request ("Interest rate can be
+adjusted", singular).
+
+One source-sheet quirk, preserved literally rather than "fixed": the
+sheet's year-by-year solar-savings row keeps subtracting the battery's
+annual energy throughput from solar generation for the ENTIRE horizon (its
+`$G$9` reference is absolute), even after the battery's own modelled project
+life ends and its own savings column goes to zero - so in later years that
+slice of energy earns neither solar nor battery savings. Reproduced exactly
+as the source sheet does it (see `lcoe.ts`'s inline comment on
+`solarNetGenerationKwh`), not corrected, since it wasn't clear whether this
+was intentional or a source-sheet oversight - worth confirming with
+HolmStone (added to Open items below).
+
+Also flagged, not silently assumed: for **Off-Grid**, the savings model
+reuses the same Blended Standard/Peak avoided-cost approach as Hybrid, shown
+with an on-page warning banner - but Off-Grid has no grid connection at all,
+so its real "savings" is closer to 100% bill avoidance (less generator fuel
+costs, not modelled) rather than TOU peak-shifting savings. Treat the
+Off-Grid LCOE page's numbers as an approximation/lower bound pending a
+dedicated Off-Grid savings model.
+
+No battery replacement is modelled after the battery's project life expires
+(matches the source sheet's own behaviour, see above) - a real proposal
+spanning >15 years (default) would need a second battery CAPEX event that
+isn't captured here.
+
 ## Multi-project & version history (new)
 
 `src/lib/projects/` adds project + version management: create a new
@@ -173,3 +247,14 @@ Phase 2/3 (costing) work begins - see
   typed into 'Solar Grid Tied Calc'!B5) should be reconciled with HolmStone.
 - The unlabeled 0.85 "BESS Usable" factor in the 'Off-Grid' sheet needs a
   confirmed definition (coverage ratio? DoD-adjacent? something else?).
+- LCOE Solar/Battery CAPEX cost/kWp and cost/kWh have no real source yet
+  (Phase 2/3's BOQ costing module isn't built) - currently editable
+  placeholders (see "LCOE & Savings" section above). Should be wired to real
+  supplier costing once Phase 2/3 lands.
+- LCOE's source sheet subtracts the battery's annual energy throughput from
+  solar generation for the ENTIRE savings horizon, even after the battery's
+  own modelled project life ends (see "LCOE & Savings" section above) -
+  worth confirming with HolmStone whether that's intentional.
+- Off-Grid's LCOE savings currently reuse the same peak-shifting model as
+  Hybrid (flagged with an on-page warning) - a dedicated 100%-bill-avoidance
+  Off-Grid savings model would be more accurate.

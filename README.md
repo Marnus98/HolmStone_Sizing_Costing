@@ -35,6 +35,15 @@ deferred" below.
 
   (`/solar`, `/battery`, `/offgrid` still exist as redirects to `/sizing` for
   anyone with the old links bookmarked.)
+- **LCOE & Savings** (`/lcoe`) - pick Solar PV only / Hybrid / Off-Grid (independent
+  of the Project Details "System Type" marker); every size input is pulled
+  straight from System Sizing and Consumption Analysis - nothing re-entered.
+  Computes Solar LCOE and Battery LCOS (cost-of-capital basis, via a
+  PMT-style annuity), simple payback, and a 20-year year-by-year savings
+  table with editable interest rate, maintenance %, project insurance % (new
+  - not in the source workbook), tariff escalation and panel degradation -
+  shown as an annual savings bar chart and a cumulative-savings-vs-CAPEX line
+  chart.
 - **Non-linear seasonal solar production** - a 12-month yield-shape table
   (source: 'kWhkWp' sheet) drives the production charts and the Off-Grid
   worst-month check, scaling proportionally whenever the annual specific
@@ -59,14 +68,16 @@ the values Excel itself produced:
 node --experimental-strip-types scripts/validate-calculations.ts
 ```
 
-Current result: **38/38 checks pass** - annual/monthly consumption and cost,
+Current result: **58/58 checks pass** - annual/monthly consumption and cost,
 both Battery Sizing scenarios, and Solar Sizing (Hybrid) all match the
 original Mardale workbook's own output; the Grid-Tied and Off-Grid quick
 calcs match the new "Solar calc - claude.xlsx" reference file's own numbers
-exactly (33.89 kWp Grid-Tied; 243.96 / 292.76 kWh and 98.66 kWp Off-Grid).
-The Off-Grid module's generator/warning logic (an app-level addition, not
-part of the reference file) is checked for sane behaviour and a working
-undersized-warning trigger.
+exactly (33.89 kWp Grid-Tied; 243.96 / 292.76 kWh and 98.66 kWp Off-Grid);
+the LCOE & Savings module matches "LCOE - Claude.xlsx" exactly (CAPEX,
+cost-of-capital, LCOE/LCOS, and 20 years of savings/cumulative-savings
+figures). The Off-Grid module's generator/warning logic and the LCOE
+module's Project Insurance line (both app-level additions, not part of
+either reference file) are checked for sane behaviour.
 
 ## Deliberate corrections vs. the workbook
 
@@ -142,7 +153,7 @@ src/
   app/                  Next.js App Router pages (one per module, incl. /projects)
   components/            Nav + shared UI primitives (NumberField, Card, etc.)
   lib/
-    calculations/         Pure calculation-engine modules (the source of truth)
+    calculations/         Pure calculation-engine modules (the source of truth, incl. lcoe.ts)
     context/               Live-editing state for the active project+version
     projects/              Multi-project / version-history store (localStorage-backed)
     tariffs/                Eskom NLA tariff catalog (Megaflex/Miniflex/Ruraflex/Nightsave Rural/Landrate) + resolver

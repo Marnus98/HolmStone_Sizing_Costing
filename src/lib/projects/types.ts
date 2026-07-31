@@ -16,6 +16,7 @@ import type {
   SolarSizingAssumptions,
   OffGridSizingAssumptions,
 } from "@/lib/calculations/types";
+import type { LcoeAssumptions, LcoeSystemType } from "@/lib/calculations/lcoe.ts";
 
 /** Everything a single version of a project snapshots - i.e. all editable inputs/assumptions. */
 export interface ProjectData {
@@ -26,6 +27,11 @@ export interface ProjectData {
   batteryAssumptions: BatterySizingAssumptions;
   solarAssumptions: SolarSizingAssumptions;
   offGridAssumptions: OffGridSizingAssumptions;
+  // Optional so projects/versions saved before the LCOE feature existed keep
+  // loading fine - ProjectContext supplies defaults when these are missing.
+  lcoeAssumptions?: LcoeAssumptions;
+  /** Which of the three system types the LCOE & Savings page is currently showing - independent of the main "systemType" proposal marker, so you can compare LCOE across types without changing what's proposed. */
+  lcoeSystemType?: LcoeSystemType;
 }
 
 export interface ProjectVersion {

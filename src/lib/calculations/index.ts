@@ -4,3 +4,4 @@ export * from "./batterySizing";
 export * from "./solarYieldProfile.ts";
 export * from "./solarSizing";
 export * from "./offGridSizing";
+export * from "./lcoe.ts";

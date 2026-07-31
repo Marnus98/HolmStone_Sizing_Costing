@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/inputs", label: "Inputs" },
   { href: "/consumption", label: "Consumption Analysis" },
   { href: "/sizing", label: "System Sizing" },
+  { href: "/lcoe", label: "LCOE & Savings" },
 ];
 
 export function Nav() {

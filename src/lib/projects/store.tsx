@@ -14,6 +14,7 @@ import {
   DEFAULT_BATTERY_ASSUMPTIONS,
   defaultSolarAssumptions,
   DEFAULT_OFFGRID_ASSUMPTIONS,
+  defaultLcoeAssumptions,
 } from "@/lib/calculations";
 import { mardaleBills, mardaleTariff } from "@/lib/seed/mardaleAppleFarm";
 
@@ -33,6 +34,8 @@ export function defaultProjectData(systemType: SystemType, farmSiteName = ""): P
     batteryAssumptions: DEFAULT_BATTERY_ASSUMPTIONS,
     solarAssumptions: defaultSolarAssumptions(systemType === "solar_pv_only" ? "solar_pv_only" : "hybrid"),
     offGridAssumptions: DEFAULT_OFFGRID_ASSUMPTIONS,
+    lcoeAssumptions: defaultLcoeAssumptions(),
+    lcoeSystemType: systemType,
   };
 }
 
@@ -45,6 +48,8 @@ function mardaleDemoProjectData(): ProjectData {
     batteryAssumptions: DEFAULT_BATTERY_ASSUMPTIONS,
     solarAssumptions: defaultSolarAssumptions("hybrid"),
     offGridAssumptions: DEFAULT_OFFGRID_ASSUMPTIONS,
+    lcoeAssumptions: defaultLcoeAssumptions(),
+    lcoeSystemType: "hybrid",
   };
 }
 
